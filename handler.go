@@ -28,7 +28,7 @@ var safeMethods = []string{"GET", "HEAD", "OPTIONS", "TRACE"}
 // reasons for CSRF check failures
 var (
 	ErrNoReferer  = errors.New("A secure request contained no Referer or its value was malformed")
-	ErrBadReferer = errors.New("A secure request's Referer comes from a different Origin" +
+	ErrBadReferer = errors.New("A secure request's Referer comes from a different origin" +
 		" from the request's URL")
 	ErrBadToken = errors.New("The CSRF token in the cookie doesn't match the one" +
 		" received in a form/header.")
@@ -57,6 +57,8 @@ type CSRFHandler struct {
 
 	// All of those will be matched against Request.URL.Path,
 	// So they should take the leading slash into account
+
+	isTLS func(r *http.Request) bool
 }
 
 func defaultFailureHandler(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +97,7 @@ func New(handler http.Handler) *CSRFHandler {
 	csrf := &CSRFHandler{successHandler: handler,
 		failureHandler: http.HandlerFunc(defaultFailureHandler),
 		baseCookie:     baseCookie,
+		isTLS:          func(r *http.Request) bool { return true },
 	}
 
 	return csrf
@@ -145,10 +148,19 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isTLS := h.isTLS(r)
+	selfOrigin := &url.URL{
+		Scheme: "http",
+		Host:   r.Host,
+	}
+	if isTLS {
+		selfOrigin.Scheme = "https"
+	}
+
 	// if the request is secure, we enforce origin check
 	// for referer to prevent MITM of http->https requests
-	if r.URL.Scheme == "https" {
-		referer, err := url.Parse(r.Header.Get("Referer"))
+	if isTLS {
+		referer, err := url.Parse(r.Referer())
 
 		// if we can't parse the referer or it's empty,
 		// we assume it's not specified
@@ -160,7 +172,8 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// if the referer doesn't share origin with the request URL,
 		// we have another error for that
-		if !sameOrigin(referer, r.URL) {
+		// TODO: add allowlist of origins
+		if !sameOrigin(referer, selfOrigin) {
 			ctxSetReason(r, ErrBadReferer)
 			h.handleFailure(w, r)
 			return
@@ -223,4 +236,31 @@ func (h *CSRFHandler) SetFailureHandler(handler http.Handler) {
 // This way you can specify the Domain, Path, HttpOnly, Secure, etc.
 func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 	h.baseCookie = cookie
+}
+
+// SetIsTLS sets a delegate function which determines, on a per-request basis, whether the request is made over a secure connection.
+// This should return `true` iff the URL that the user uses to access the application begins with https://.
+// For example, if the Go web application is served via plain-text HTTP,
+// but the user is accessing it through HTTPS via a TLS-terminating reverse-proxy, this should return `true`.
+//
+// Examples:
+//
+// 1. If you're using the Go TLS stack (no TLS-terminating proxies in between the user and the app), you may use:
+//
+//	h.SetIsTLS(func(r *http.Request) bool { return r.TLS != nil })
+//
+// 2. If your application is behind a reverse proxy that terminates TLS, you should configure the reverse proxy
+// to report the protocol that the request was made over via an HTTP header,
+// e.g. [X-Forwarded-Proto].
+// You should also validate that the request is coming in from an IP of a trusted reverse proxy
+// to ensure that this header has not been spoofed by an attacker. For example:
+//
+//	var trustedProxies = []string{"198.51.100.1", "198.51.100.2"}
+//	h.SetIsTLS(func(r *http.Request) bool {
+//		ip, _, _ := strings.Cut(r.RemoteAddr, ":")
+//		proto := r.Header.Get("X-Forwarded-Proto")
+//		return slices.Contains(trustedProxies, ip) && proto == "https"
+//	})
+func (h *CSRFHandler) SetIsTLS(f func(*http.Request) bool) {
+	h.isTLS = f
 }

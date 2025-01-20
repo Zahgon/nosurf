@@ -151,6 +151,93 @@ func TestContextIsAccessible(t *testing.T) {
 	hand.ServeHTTP(writer, req)
 }
 
+func TestRefererHandling(t *testing.T) {
+	const host = "example.com"
+	testCases := []struct {
+		name         string
+		isTLS        bool
+		referer      string
+		expectReason error
+	}{
+		{
+			name:         "identical secure referer passes",
+			isTLS:        true,
+			referer:      "https://example.com",
+			expectReason: nil,
+		},
+		{
+			name:         "differing referer fails",
+			isTLS:        true,
+			referer:      "https://attacker.lol",
+			expectReason: ErrBadReferer,
+		},
+		{
+			name:         "mismatched scheme fails",
+			isTLS:        true,
+			referer:      "http://example.com",
+			expectReason: ErrBadReferer,
+		},
+		{
+			name:         "mismatched referer passes on insecure requests",
+			isTLS:        false,
+			referer:      "https://localhost",
+			expectReason: nil,
+		},
+		{
+			name:         "mismatched referer passes on insecure requests",
+			isTLS:        false,
+			referer:      "http://localhost",
+			expectReason: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			hand := New(http.HandlerFunc(succHand))
+			fhand := correctReason(t, tc.expectReason)
+			hand.SetFailureHandler(fhand)
+			hand.SetIsTLS(func(_ *http.Request) bool { return tc.isTLS })
+
+			// TODO: consider HTTP test server to avoid mistakes with "mocking" the Go HTTP request.
+
+			writer := httptest.NewRecorder()
+
+			// Issue a GET to fetch the token
+			req, err := http.NewRequest(http.MethodGet, "/", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Host = host
+			req.Header.Set("Referer", tc.referer)
+
+			hand.ServeHTTP(writer, req)
+			cookie := getRespCookie(writer.Result(), CookieName)
+
+			// Issue POST to check handling
+			finalToken := b64encode(maskToken(b64decode(cookie.Value)))
+			req, err = http.NewRequest("POST", "/", formBodyR([][]string{
+				{"name", "Jolene"},
+				{FormFieldName, finalToken},
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Host = host
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Referer", tc.referer)
+			req.AddCookie(cookie)
+
+			writer = httptest.NewRecorder()
+
+			hand.ServeHTTP(writer, req)
+
+			if tc.expectReason == nil && writer.Code != http.StatusOK {
+				t.Errorf("Expected request to succeed, but it failed with code %d", writer.Code)
+			}
+		})
+	}
+}
+
 func TestEmptyRefererFails(t *testing.T) {
 	hand := New(http.HandlerFunc(succHand))
 	fhand := correctReason(t, ErrNoReferer)
@@ -199,10 +286,12 @@ func TestNoTokenFails(t *testing.T) {
 		{"name", "Jolene"},
 	}
 
-	req, err := http.NewRequest("POST", "http://dummy.us", formBodyR(vals))
+	req, err := http.NewRequest("POST", "/", formBodyR(vals))
 	if err != nil {
 		panic(err)
 	}
+	req.Host = "example.com"
+	req.Header.Add("Referer", "https://example.com")
 	writer := httptest.NewRecorder()
 
 	hand.ServeHTTP(writer, req)
@@ -231,10 +320,12 @@ func TestWrongTokenFails(t *testing.T) {
 		{FormFieldName, "$#%^&"},
 	}
 
-	req, err := http.NewRequest("POST", "http://dummy.us", formBodyR(vals))
+	req, err := http.NewRequest("POST", "/", formBodyR(vals))
 	if err != nil {
 		panic(err)
 	}
+	req.Host = "example.com"
+	req.Header.Add("Referer", "https://example.com")
 	writer := httptest.NewRecorder()
 
 	hand.ServeHTTP(writer, req)
@@ -306,26 +397,26 @@ func TestCorrectTokenPasses(t *testing.T) {
 	}
 
 	// Test usual POST
-	/*
-		{
-			req, err := http.NewRequest("POST", server.URL, formBodyR(vals))
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			req.AddCookie(cookie)
-
-			resp, err = http.DefaultClient.Do(req)
-
-			if err != nil {
-				t.Fatal(err)
-			}
-			if resp.StatusCode != 200 {
-				t.Errorf("The request should have succeeded, but it didn't. Instead, the code was %d",
-					resp.StatusCode)
-			}
+	{
+		req, err := http.NewRequest("POST", server.URL, formBodyR(vals))
+		if err != nil {
+			t.Fatal(err)
 		}
-	*/
+		req.Host = "example.com"
+		req.Header.Add("Referer", "https://example.com")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(cookie)
+
+		resp, err = http.DefaultClient.Do(req)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != 200 {
+			t.Errorf("The request should have succeeded, but it didn't. Instead, the code was %d",
+				resp.StatusCode)
+		}
+	}
 
 	// Test multipart
 	{
@@ -357,7 +448,8 @@ func TestCorrectTokenPasses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
+		req.Host = "example.com"
+		req.Header.Add("Referer", "https://example.com")
 		req.Header.Add("Content-Type", wr.FormDataContentType())
 		req.AddCookie(cookie)
 
@@ -405,6 +497,8 @@ func TestPrefersHeaderOverFormValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Host = "example.com"
+	req.Header.Add("Referer", "https://example.com")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set(HeaderName, finalToken)
 	req.AddCookie(cookie)
