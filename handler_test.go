@@ -157,36 +157,75 @@ func TestRefererHandling(t *testing.T) {
 		name         string
 		isTLS        bool
 		referer      string
+		origin       string
 		expectReason error
 	}{
 		{
-			name:         "identical secure referer passes",
+			name:         "identical secure Referer passes",
 			isTLS:        true,
 			referer:      "https://example.com",
 			expectReason: nil,
 		},
 		{
-			name:         "differing referer fails",
+			name:         "differing Referer fails",
 			isTLS:        true,
 			referer:      "https://attacker.lol",
 			expectReason: ErrBadReferer,
 		},
 		{
-			name:         "mismatched scheme fails",
+			name:         "mismatched Referer scheme fails",
 			isTLS:        true,
 			referer:      "http://example.com",
 			expectReason: ErrBadReferer,
 		},
 		{
-			name:         "mismatched referer passes on insecure requests",
+			name:         "mismatched Referer passes on insecure requests",
 			isTLS:        false,
-			referer:      "https://localhost",
+			referer:      "https://attacker.lol",
 			expectReason: nil,
 		},
 		{
-			name:         "mismatched referer passes on insecure requests",
+			name:         "mismatched Referer passes on insecure requests",
 			isTLS:        false,
-			referer:      "http://localhost",
+			referer:      "http://attacker.lol",
+			expectReason: nil,
+		},
+		{
+			name:         "mismatched Origin fails on insecure requests",
+			isTLS:        false,
+			origin:       "http://attacker.lol",
+			expectReason: ErrBadOrigin,
+		},
+		{
+			name:         "mismatched Origin fails on secure requests",
+			isTLS:        false,
+			origin:       "http://attacker.lol",
+			referer:      "https://example.com",
+			expectReason: ErrBadOrigin,
+		},
+		{
+			name:         "mismatched Origin scheme fails on insecure requests",
+			isTLS:        false,
+			origin:       "https://example.com",
+			expectReason: ErrBadOrigin,
+		},
+		{
+			name:         "mismatched Origin scheme fails on insecure requests",
+			isTLS:        true,
+			origin:       "http://example.com",
+			expectReason: ErrBadOrigin,
+		},
+		{
+			name:         "matching Origin passes on insecure requests",
+			isTLS:        false,
+			origin:       "http://example.com",
+			expectReason: nil,
+		},
+		{
+			name:         "matching Origin passes on secure requests",
+			isTLS:        true,
+			origin:       "https://example.com",
+			referer:      "https://example.com/some/page",
 			expectReason: nil,
 		},
 	}
@@ -198,24 +237,25 @@ func TestRefererHandling(t *testing.T) {
 			hand.SetFailureHandler(fhand)
 			hand.SetIsTLS(func(_ *http.Request) bool { return tc.isTLS })
 
-			// TODO: consider HTTP test server to avoid mistakes with "mocking" the Go HTTP request.
-
-			writer := httptest.NewRecorder()
+			server := httptest.NewServer(hand)
+			t.Cleanup(func() { server.Close() })
 
 			// Issue a GET to fetch the token
-			req, err := http.NewRequest(http.MethodGet, "/", nil)
+			req, err := http.NewRequest(http.MethodGet, server.URL, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 			req.Host = host
-			req.Header.Set("Referer", tc.referer)
 
-			hand.ServeHTTP(writer, req)
-			cookie := getRespCookie(writer.Result(), CookieName)
+			resp, err := server.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cookie := getRespCookie(resp, CookieName)
 
 			// Issue POST to check handling
 			finalToken := b64encode(maskToken(b64decode(cookie.Value)))
-			req, err = http.NewRequest("POST", "/", formBodyR([][]string{
+			req, err = http.NewRequest("POST", server.URL, formBodyR([][]string{
 				{"name", "Jolene"},
 				{FormFieldName, finalToken},
 			}))
@@ -224,15 +264,24 @@ func TestRefererHandling(t *testing.T) {
 			}
 			req.Host = host
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			req.Header.Set("Referer", tc.referer)
+			if tc.referer != "" {
+				req.Header.Set("Referer", tc.referer)
+			}
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
 			req.AddCookie(cookie)
+			resp, err = server.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-			writer = httptest.NewRecorder()
-
-			hand.ServeHTTP(writer, req)
-
-			if tc.expectReason == nil && writer.Code != http.StatusOK {
-				t.Errorf("Expected request to succeed, but it failed with code %d", writer.Code)
+			if tc.expectReason == nil {
+				if resp.StatusCode != http.StatusOK {
+					t.Errorf("Expected request to succeed, but it failed with code %d", resp.StatusCode)
+				}
+			} else if resp.StatusCode != FailureCode {
+				t.Errorf("Expected request to fail with status code %d, but the status code was %d", FailureCode, resp.StatusCode)
 			}
 		})
 	}

@@ -30,7 +30,8 @@ var (
 	ErrNoReferer  = errors.New("A secure request contained no Referer or its value was malformed")
 	ErrBadReferer = errors.New("A secure request's Referer comes from a different origin" +
 		" from the request's URL")
-	ErrBadToken = errors.New("The CSRF token in the cookie doesn't match the one" +
+	ErrBadOrigin = errors.New("Request was made with a disallowed origin specified in the Origin header")
+	ErrBadToken  = errors.New("The CSRF token in the cookie doesn't match the one" +
 		" received in a form/header.")
 )
 
@@ -157,6 +158,12 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		selfOrigin.Scheme = "https"
 	}
 
+	if err := h.checkOrigin(selfOrigin, r); err != nil {
+		ctxSetReason(r, err)
+		h.handleFailure(w, r)
+		return
+	}
+
 	// if the request is secure, we enforce origin check
 	// for referer to prevent MITM of http->https requests
 	if isTLS {
@@ -204,6 +211,25 @@ func (h *CSRFHandler) handleSuccess(w http.ResponseWriter, r *http.Request) {
 // and only then calls handleFailure()
 func (h *CSRFHandler) handleFailure(w http.ResponseWriter, r *http.Request) {
 	h.failureHandler.ServeHTTP(w, r)
+}
+
+func (h *CSRFHandler) checkOrigin(selfOrigin *url.URL, r *http.Request) error {
+	originStr := r.Header.Get("Origin")
+	if originStr == "" || originStr == "null" {
+		return nil
+	}
+
+	origin, err := url.Parse(originStr)
+	if err != nil {
+		return err
+	}
+
+	// TODO: add allowlist of origins
+	if !sameOrigin(selfOrigin, origin) {
+		return ErrBadOrigin
+	}
+
+	return nil
 }
 
 // Generates a new token, sets it on the given request and returns it
