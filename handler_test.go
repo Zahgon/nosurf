@@ -162,6 +162,11 @@ func TestRefererHandling(t *testing.T) {
 		expectReason error
 	}{
 		{
+			name:         "no Referer nor Origin fails on secure requests",
+			isTLS:        true,
+			expectReason: ErrNoReferer,
+		},
+		{
 			name:         "identical secure Referer passes",
 			isTLS:        true,
 			referer:      "https://example.com",
@@ -323,45 +328,6 @@ func TestRefererHandling(t *testing.T) {
 				t.Errorf("Expected request to fail with status code %d, but the status code was %d", FailureCode, resp.StatusCode)
 			}
 		})
-	}
-}
-
-func TestEmptyRefererFails(t *testing.T) {
-	hand := New(http.HandlerFunc(succHand))
-	fhand := correctReason(t, ErrNoReferer)
-	hand.SetFailureHandler(fhand)
-
-	req, err := http.NewRequest("POST", "https://dummy.us/", strings.NewReader("a=b"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	writer := httptest.NewRecorder()
-
-	hand.ServeHTTP(writer, req)
-
-	if writer.Code != FailureCode {
-		t.Errorf("A POST request with no Referer should have failed with the code %d, but it didn't.",
-			writer.Code)
-	}
-}
-
-func TestDifferentOriginRefererFails(t *testing.T) {
-	hand := New(http.HandlerFunc(succHand))
-	fhand := correctReason(t, ErrBadReferer)
-	hand.SetFailureHandler(fhand)
-
-	req, err := http.NewRequest("POST", "https://dummy.us/", strings.NewReader("a=b"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Referer", "http://attack-on-golang.com")
-	writer := httptest.NewRecorder()
-
-	hand.ServeHTTP(writer, req)
-
-	if writer.Code != FailureCode {
-		t.Errorf("A POST request with a Referer from a different origin"+
-			"should have failed with the code %d, but it didn't.", writer.Code)
 	}
 }
 
