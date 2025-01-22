@@ -153,6 +153,7 @@ func TestContextIsAccessible(t *testing.T) {
 
 func TestRefererHandling(t *testing.T) {
 	const host = "example.com"
+	var allowedOrigins = []string{"https://api.example.com", "http://example.org"}
 	testCases := []struct {
 		name         string
 		isTLS        bool
@@ -228,6 +229,34 @@ func TestRefererHandling(t *testing.T) {
 			referer:      "https://example.com/some/page",
 			expectReason: nil,
 		},
+		{
+			name:         "explicitly allowed insecure Origin passes",
+			isTLS:        false,
+			origin:       "http://example.org",
+			referer:      "http://attacker.lol",
+			expectReason: nil,
+		},
+		{
+			name:         "explicitly allowed insecure Origin passes, despite a secure request",
+			isTLS:        false,
+			origin:       "http://example.org",
+			referer:      "http://attacker.lol",
+			expectReason: nil,
+		},
+		{
+			name:         "explicitly allowed secure Origin passes",
+			isTLS:        true,
+			origin:       "https://api.example.com",
+			referer:      "http://attacker.lol",
+			expectReason: nil,
+		},
+		{
+			name:         "explicitly allowed insecure Origin passes, despite an insecure request",
+			isTLS:        false,
+			origin:       "https://api.example.com",
+			referer:      "http://attacker.lol",
+			expectReason: nil,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -236,6 +265,10 @@ func TestRefererHandling(t *testing.T) {
 			fhand := correctReason(t, tc.expectReason)
 			hand.SetFailureHandler(fhand)
 			hand.SetIsTLS(func(_ *http.Request) bool { return tc.isTLS })
+			err := hand.SetAllowedOrigins(allowedOrigins)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			server := httptest.NewServer(hand)
 			t.Cleanup(func() { server.Close() })

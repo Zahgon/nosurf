@@ -59,7 +59,8 @@ type CSRFHandler struct {
 	// All of those will be matched against Request.URL.Path,
 	// So they should take the leading slash into account
 
-	isTLS func(r *http.Request) bool
+	isTLS          func(r *http.Request) bool
+	allowedOrigins []*url.URL
 }
 
 func defaultFailureHandler(w http.ResponseWriter, r *http.Request) {
@@ -224,12 +225,17 @@ func (h *CSRFHandler) checkOrigin(selfOrigin *url.URL, r *http.Request) error {
 		return err
 	}
 
-	// TODO: add allowlist of origins
-	if !sameOrigin(selfOrigin, origin) {
-		return ErrBadOrigin
+	if sameOrigin(selfOrigin, origin) {
+		return nil
 	}
 
-	return nil
+	for _, allowedOrigin := range h.allowedOrigins {
+		if sameOrigin(allowedOrigin, origin) {
+			return nil
+		}
+	}
+
+	return ErrBadOrigin
 }
 
 // Generates a new token, sets it on the given request and returns it
@@ -289,4 +295,23 @@ func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 //	})
 func (h *CSRFHandler) SetIsTLS(f func(*http.Request) bool) {
 	h.isTLS = f
+}
+
+// SetAllowedOrigins defines a set of origins that are, in addition to the origin in the Host header,
+// explicitly allowed in non-safe HTTP requests (e.g. PUT, POST, DELETE).
+// This function expects each element to be of form `scheme://host`, e.g.: `https://example.com`, `http://example.org`.
+// If any element of the slice is an invalid URL, this function will return an error.
+// If an element includes additional URL parts (e.g. a path), these parts will be ignored,
+// as origin checks only take the scheme and host into account.
+func (h *CSRFHandler) SetAllowedOrigins(origins []string) error {
+	var result []*url.URL
+	for _, o := range origins {
+		url, err := url.Parse(o)
+		if err != nil {
+			return err
+		}
+		result = append(result, url)
+	}
+	h.allowedOrigins = result
+	return nil
 }
