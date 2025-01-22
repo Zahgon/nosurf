@@ -168,13 +168,13 @@ func TestRefererHandling(t *testing.T) {
 			expectReason: nil,
 		},
 		{
-			name:         "differing Referer fails",
+			name:         "differing Referer fails when Origin is absent",
 			isTLS:        true,
 			referer:      "https://attacker.lol",
 			expectReason: ErrBadReferer,
 		},
 		{
-			name:         "mismatched Referer scheme fails",
+			name:         "mismatched Referer scheme fails when Origin is absent",
 			isTLS:        true,
 			referer:      "http://example.com",
 			expectReason: ErrBadReferer,
@@ -255,6 +255,12 @@ func TestRefererHandling(t *testing.T) {
 			isTLS:        false,
 			origin:       "https://api.example.com",
 			referer:      "http://attacker.lol",
+			expectReason: nil,
+		},
+		{
+			name:         "explicitly allowed Referer passes when Origin is absent",
+			isTLS:        true,
+			referer:      "http://example.org",
 			expectReason: nil,
 		},
 	}

@@ -33,6 +33,9 @@ var (
 	ErrBadOrigin = errors.New("Request was made with a disallowed origin specified in the Origin header")
 	ErrBadToken  = errors.New("The CSRF token in the cookie doesn't match the one" +
 		" received in a form/header.")
+
+	// Internal error. When this is raised, and the request is secure, we additionally check for Referer.
+	errNoOrigin = errors.New("Origin header was not present")
 )
 
 type CSRFHandler struct {
@@ -160,31 +163,19 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.checkOrigin(selfOrigin, r); err != nil {
-		ctxSetReason(r, err)
-		h.handleFailure(w, r)
-		return
-	}
-
-	// if the request is secure, we enforce origin check
-	// for referer to prevent MITM of http->https requests
-	if isTLS {
-		referer, err := url.Parse(r.Referer())
-
-		// if we can't parse the referer or it's empty,
-		// we assume it's not specified
-		if err != nil || referer.String() == "" {
-			ctxSetReason(r, ErrNoReferer)
+		// Origin mismatch.
+		if !errors.Is(err, errNoOrigin) {
+			ctxSetReason(r, err)
 			h.handleFailure(w, r)
 			return
 		}
-
-		// if the referer doesn't share origin with the request URL,
-		// we have another error for that
-		// TODO: add allowlist of origins
-		if !sameOrigin(referer, selfOrigin) {
-			ctxSetReason(r, ErrBadReferer)
-			h.handleFailure(w, r)
-			return
+		// If Origin header was not present, fall back on Referer check for secure requests.
+		if isTLS {
+			if err := h.checkReferer(selfOrigin, r); err != nil {
+				ctxSetReason(r, err)
+				h.handleFailure(w, r)
+				return
+			}
 		}
 	}
 
@@ -214,10 +205,29 @@ func (h *CSRFHandler) handleFailure(w http.ResponseWriter, r *http.Request) {
 	h.failureHandler.ServeHTTP(w, r)
 }
 
+func (h *CSRFHandler) checkReferer(selfOrigin *url.URL, r *http.Request) error {
+	referer, err := url.Parse(r.Referer())
+	if err != nil || referer.String() == "" {
+		return ErrNoReferer
+	}
+
+	if sameOrigin(selfOrigin, referer) {
+		return nil
+	}
+
+	for _, allowedOrigin := range h.allowedOrigins {
+		if sameOrigin(referer, allowedOrigin) {
+			return nil
+		}
+	}
+
+	return ErrBadReferer
+}
+
 func (h *CSRFHandler) checkOrigin(selfOrigin *url.URL, r *http.Request) error {
 	originStr := r.Header.Get("Origin")
 	if originStr == "" || originStr == "null" {
-		return nil
+		return errNoOrigin
 	}
 
 	origin, err := url.Parse(originStr)
