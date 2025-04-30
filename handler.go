@@ -222,6 +222,11 @@ func (h *CSRFHandler) checkReferer(selfOrigin *url.URL, r *http.Request) error {
 }
 
 func (h *CSRFHandler) checkOrigin(selfOrigin *url.URL, r *http.Request) error {
+	secFetchSite := r.Header.Get("Sec-Fetch-Site")
+	if secFetchSite == "same-origin" {
+		return nil
+	}
+
 	originStr := r.Header.Get("Origin")
 	if originStr == "" || originStr == "null" {
 		return errNoOrigin
