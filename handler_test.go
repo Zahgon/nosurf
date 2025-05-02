@@ -159,6 +159,7 @@ func TestRefererHandling(t *testing.T) {
 		isTLS        bool
 		referer      string
 		origin       string
+		secFetchSite string
 		expectReason error
 	}{
 		{
@@ -267,6 +268,24 @@ func TestRefererHandling(t *testing.T) {
 			referer:      "http://example.org",
 			expectReason: nil,
 		},
+		{
+			name:         "Sec-Fetch-Site: same-origin is sufficient",
+			isTLS:        true,
+			secFetchSite: "same-origin",
+			expectReason: nil,
+		},
+		{
+			name:         "Sec-Fetch-Site: same-site does not pass",
+			isTLS:        true,
+			secFetchSite: "same-site",
+			expectReason: ErrNoReferer,
+		},
+		{
+			name:         "Sec-Fetch-Site: none does not pass",
+			isTLS:        true,
+			secFetchSite: "null",
+			expectReason: ErrNoReferer,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -313,6 +332,9 @@ func TestRefererHandling(t *testing.T) {
 			}
 			if tc.origin != "" {
 				req.Header.Set("Origin", tc.origin)
+			}
+			if tc.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tc.secFetchSite)
 			}
 			req.AddCookie(cookie)
 			resp, err = server.Client().Do(req)
