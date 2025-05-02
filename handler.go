@@ -62,7 +62,7 @@ type CSRFHandler struct {
 	// All of those will be matched against Request.URL.Path,
 	// So they should take the leading slash into account
 
-	isTLS          func(r *http.Request) bool
+	isTLSFunc      func(r *http.Request) bool
 	allowedOrigins []*url.URL
 }
 
@@ -102,7 +102,7 @@ func New(handler http.Handler) *CSRFHandler {
 	csrf := &CSRFHandler{successHandler: handler,
 		failureHandler: http.HandlerFunc(defaultFailureHandler),
 		baseCookie:     baseCookie,
-		isTLS:          func(r *http.Request) bool { return true },
+		isTLSFunc:      func(r *http.Request) bool { return true },
 	}
 
 	return csrf
@@ -153,7 +153,7 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isTLS := h.isTLS(r)
+	isTLS := h.isTLSFunc(r)
 	selfOrigin := &url.URL{
 		Scheme: "http",
 		Host:   r.Host,
@@ -280,7 +280,7 @@ func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 	h.baseCookie = cookie
 }
 
-// SetIsTLS sets a delegate function which determines, on a per-request basis, whether the request is made over a secure connection.
+// SetIsTLSFunc sets a delegate function which determines, on a per-request basis, whether the request is made over a secure connection.
 // This should return `true` iff the URL that the user uses to access the application begins with https://.
 // For example, if the Go web application is served via plain-text HTTP,
 // but the user is accessing it through HTTPS via a TLS-terminating reverse-proxy, this should return `true`.
@@ -289,7 +289,7 @@ func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 //
 // 1. If you're using the Go TLS stack (no TLS-terminating proxies in between the user and the app), you may use:
 //
-//	h.SetIsTLS(func(r *http.Request) bool { return r.TLS != nil })
+//	h.SetIsTLSFunc(func(r *http.Request) bool { return r.TLS != nil })
 //
 // 2. If your application is behind a reverse proxy that terminates TLS, you should configure the reverse proxy
 // to report the protocol that the request was made over via an HTTP header,
@@ -298,13 +298,13 @@ func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 // to ensure that this header has not been spoofed by an attacker. For example:
 //
 //	var trustedProxies = []string{"198.51.100.1", "198.51.100.2"}
-//	h.SetIsTLS(func(r *http.Request) bool {
+//	h.SetIsTLSFunc(func(r *http.Request) bool {
 //		ip, _, _ := strings.Cut(r.RemoteAddr, ":")
 //		proto := r.Header.Get("X-Forwarded-Proto")
 //		return slices.Contains(trustedProxies, ip) && proto == "https"
 //	})
-func (h *CSRFHandler) SetIsTLS(f func(*http.Request) bool) {
-	h.isTLS = f
+func (h *CSRFHandler) SetIsTLSFunc(f func(*http.Request) bool) {
+	h.isTLSFunc = f
 }
 
 // SetAllowedOrigins defines a set of origins that are, in addition to the origin in the Host header,
