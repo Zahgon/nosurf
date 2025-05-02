@@ -163,6 +163,8 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	secFetchSite := r.Header.Get("Sec-Fetch-Site")
 	if secFetchSite != "same-origin" {
+		// If no `Sec-Fetch-Site: same-origin` is present, fallback to Origin or Referer,
+		// including considering custom allowed origins.
 		if err := h.checkOrigin(selfOrigin, r); err != nil {
 			// Origin mismatch.
 			if !errors.Is(err, errNoOrigin) {
