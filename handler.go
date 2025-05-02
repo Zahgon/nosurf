@@ -288,7 +288,7 @@ func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 //
 // 2. If your application is behind a reverse proxy that terminates TLS, you should configure the reverse proxy
 // to report the protocol that the request was made over via an HTTP header,
-// e.g. [X-Forwarded-Proto].
+// e.g. `X-Forwarded-Proto`.
 // You should also validate that the request is coming in from an IP of a trusted reverse proxy
 // to ensure that this header has not been spoofed by an attacker. For example:
 //
