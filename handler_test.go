@@ -231,7 +231,6 @@ func TestRefererHandling(t *testing.T) {
 			name:         "matching Origin passes on secure requests",
 			isTLS:        true,
 			origin:       "https://example.com",
-			referer:      "https://example.com/some/page",
 			expectReason: nil,
 		},
 		{
