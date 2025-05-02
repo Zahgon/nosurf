@@ -275,11 +275,12 @@ func TestRefererHandling(t *testing.T) {
 			hand := New(http.HandlerFunc(succHand))
 			fhand := correctReason(t, tc.expectReason)
 			hand.SetFailureHandler(fhand)
-			hand.SetIsTLS(func(_ *http.Request) bool { return tc.isTLS })
-			err := hand.SetAllowedOrigins(allowedOrigins)
+			hand.SetIsTLSFunc(func(_ *http.Request) bool { return tc.isTLS })
+			origins, err := StaticOrigins(allowedOrigins...)
 			if err != nil {
 				t.Fatal(err)
 			}
+			hand.SetIsAllowedOriginFunc(origins)
 
 			server := httptest.NewServer(hand)
 			t.Cleanup(func() { server.Close() })

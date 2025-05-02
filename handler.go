@@ -49,7 +49,9 @@ type CSRFHandler struct {
 	baseCookie http.Cookie
 
 	// Slices of paths that are exempt from CSRF checks.
-	// They can be specified by...
+	// All of those will be matched against Request.URL.Path,
+	// So they should take the leading slash into account
+	// Paths can be specified by...
 	// ...an exact path,
 	exemptPaths []string
 	// ...a regexp,
@@ -59,11 +61,8 @@ type CSRFHandler struct {
 	// ...or a custom matcher function
 	exemptFunc func(r *http.Request) bool
 
-	// All of those will be matched against Request.URL.Path,
-	// So they should take the leading slash into account
-
-	isTLSFunc      func(r *http.Request) bool
-	allowedOrigins []*url.URL
+	isTLS           func(r *http.Request) bool
+	isAllowedOrigin func(r *url.URL) bool
 }
 
 func defaultFailureHandler(w http.ResponseWriter, r *http.Request) {
@@ -102,7 +101,7 @@ func New(handler http.Handler) *CSRFHandler {
 	csrf := &CSRFHandler{successHandler: handler,
 		failureHandler: http.HandlerFunc(defaultFailureHandler),
 		baseCookie:     baseCookie,
-		isTLSFunc:      func(r *http.Request) bool { return true },
+		isTLS:          func(r *http.Request) bool { return true },
 	}
 
 	return csrf
@@ -153,7 +152,7 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isTLS := h.isTLSFunc(r)
+	isTLS := h.isTLS(r)
 	selfOrigin := &url.URL{
 		Scheme: "http",
 		Host:   r.Host,
@@ -215,10 +214,8 @@ func (h *CSRFHandler) checkReferer(selfOrigin *url.URL, r *http.Request) error {
 		return nil
 	}
 
-	for _, allowedOrigin := range h.allowedOrigins {
-		if sameOrigin(referer, allowedOrigin) {
-			return nil
-		}
+	if h.isAllowedOrigin != nil && h.isAllowedOrigin(referer) {
+		return nil
 	}
 
 	return ErrBadReferer
@@ -239,10 +236,8 @@ func (h *CSRFHandler) checkOrigin(selfOrigin *url.URL, r *http.Request) error {
 		return nil
 	}
 
-	for _, allowedOrigin := range h.allowedOrigins {
-		if sameOrigin(allowedOrigin, origin) {
-			return nil
-		}
+	if h.isAllowedOrigin != nil && h.isAllowedOrigin(origin) {
+		return nil
 	}
 
 	return ErrBadOrigin
@@ -304,24 +299,48 @@ func (h *CSRFHandler) SetBaseCookie(cookie http.Cookie) {
 //		return slices.Contains(trustedProxies, ip) && proto == "https"
 //	})
 func (h *CSRFHandler) SetIsTLSFunc(f func(*http.Request) bool) {
-	h.isTLSFunc = f
+	h.isTLS = f
 }
 
-// SetAllowedOrigins defines a set of origins that are, in addition to the origin in the Host header,
-// explicitly allowed in non-safe HTTP requests (e.g. PUT, POST, DELETE).
+// SetAllowedOrigins defines a function that checks whether the request comes from an allowed origin.
+// This function will be invoked when the request is not considered a same-origin request.
+// If this function returns `false`, request will be disallowed.
+//
+// In most cases, this will be used with [StaticOrigins].
+func (h *CSRFHandler) SetIsAllowedOriginFunc(f func(*url.URL) bool) {
+	h.isAllowedOrigin = f
+}
+
+// StaticOrigins returns a delegate, suitable for passing to [CSRFHandler.SetIsAllowedOriginFunc],
+// that validates the request origin against a static list of allowed origins.
 // This function expects each element to be of form `scheme://host`, e.g.: `https://example.com`, `http://example.org`.
 // If any element of the slice is an invalid URL, this function will return an error.
 // If an element includes additional URL parts (e.g. a path), these parts will be ignored,
 // as origin checks only take the scheme and host into account.
-func (h *CSRFHandler) SetAllowedOrigins(origins []string) error {
-	var result []*url.URL
+//
+// Example:
+//
+//	h := nosurf.New()
+//	origins, err := nosurf.StaticOrigins("https://api.example.com", "http://insecure.example.com")
+//	if err != nil {
+//		panic(err)
+//	}
+//	h.SetIsAllowedOriginFunc(origins)
+func StaticOrigins(origins ...string) (func(r *url.URL) bool, error) {
+	var allowedOrigins []*url.URL
 	for _, o := range origins {
 		url, err := url.Parse(o)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		result = append(result, url)
+		allowedOrigins = append(allowedOrigins, url)
 	}
-	h.allowedOrigins = result
-	return nil
+	return func(u *url.URL) bool {
+		for _, candidate := range allowedOrigins {
+			if sameOrigin(candidate, u) {
+				return true
+			}
+		}
+		return false
+	}, nil
 }
