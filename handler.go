@@ -161,19 +161,22 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		selfOrigin.Scheme = "https"
 	}
 
-	if err := h.checkOrigin(selfOrigin, r); err != nil {
-		// Origin mismatch.
-		if !errors.Is(err, errNoOrigin) {
-			ctxSetReason(r, err)
-			h.handleFailure(w, r)
-			return
-		}
-		// If Origin header was not present, fall back on Referer check for secure requests.
-		if isTLS {
-			if err := h.checkReferer(selfOrigin, r); err != nil {
+	secFetchSite := r.Header.Get("Sec-Fetch-Site")
+	if secFetchSite != "same-origin" {
+		if err := h.checkOrigin(selfOrigin, r); err != nil {
+			// Origin mismatch.
+			if !errors.Is(err, errNoOrigin) {
 				ctxSetReason(r, err)
 				h.handleFailure(w, r)
 				return
+			}
+			// If Origin header was not present, fall back on Referer check for secure requests.
+			if isTLS {
+				if err := h.checkReferer(selfOrigin, r); err != nil {
+					ctxSetReason(r, err)
+					h.handleFailure(w, r)
+					return
+				}
 			}
 		}
 	}
@@ -222,11 +225,6 @@ func (h *CSRFHandler) checkReferer(selfOrigin *url.URL, r *http.Request) error {
 }
 
 func (h *CSRFHandler) checkOrigin(selfOrigin *url.URL, r *http.Request) error {
-	secFetchSite := r.Header.Get("Sec-Fetch-Site")
-	if secFetchSite == "same-origin" {
-		return nil
-	}
-
 	originStr := r.Header.Get("Origin")
 	if originStr == "" || originStr == "null" {
 		return errNoOrigin
