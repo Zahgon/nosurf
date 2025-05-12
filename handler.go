@@ -152,35 +152,10 @@ func (h *CSRFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	isTLS := h.isTLS(r)
-	selfOrigin := &url.URL{
-		Scheme: "http",
-		Host:   r.Host,
-	}
-	if isTLS {
-		selfOrigin.Scheme = "https"
-	}
-
-	secFetchSite := r.Header.Get("Sec-Fetch-Site")
-	if secFetchSite != "same-origin" {
-		// If no `Sec-Fetch-Site: same-origin` is present, fallback to Origin or Referer,
-		// including considering custom allowed origins.
-		if err := h.checkOrigin(selfOrigin, r); err != nil {
-			// Origin mismatch.
-			if !errors.Is(err, errNoOrigin) {
-				ctxSetReason(r, err)
-				h.handleFailure(w, r)
-				return
-			}
-			// If Origin header was not present, fall back on Referer check for secure requests.
-			if isTLS {
-				if err := h.checkReferer(selfOrigin, r); err != nil {
-					ctxSetReason(r, err)
-					h.handleFailure(w, r)
-					return
-				}
-			}
-		}
+	if err := h.ensureSameOrigin(r); err != nil {
+		ctxSetReason(r, err)
+		h.handleFailure(w, r)
+		return
 	}
 
 	// Finally, we check the token itself.
@@ -207,6 +182,43 @@ func (h *CSRFHandler) handleSuccess(w http.ResponseWriter, r *http.Request) {
 // and only then calls handleFailure()
 func (h *CSRFHandler) handleFailure(w http.ResponseWriter, r *http.Request) {
 	h.failureHandler.ServeHTTP(w, r)
+}
+
+func (h *CSRFHandler) ensureSameOrigin(r *http.Request) error {
+	selfOrigin := &url.URL{
+		Scheme: "http",
+		Host:   r.Host,
+	}
+	isTLS := h.isTLS(r)
+	if isTLS {
+		selfOrigin.Scheme = "https"
+	}
+
+	secFetchSite := r.Header.Get("Sec-Fetch-Site")
+	if secFetchSite == "same-origin" {
+		return nil
+	}
+
+	// If no `Sec-Fetch-Site: same-origin` is present, fallback to Origin or Referer,
+	// including considering custom allowed origins.
+	err := h.checkOrigin(selfOrigin, r)
+	if err == nil {
+		return nil
+	} else if !errors.Is(err, errNoOrigin) {
+		return err
+	}
+
+	// If Origin header was not present, fall back on Referer check for secure requests.
+	if isTLS {
+		if err := h.checkReferer(selfOrigin, r); err != nil {
+			return err
+		}
+	}
+
+	// If neither of the 3 headers were available (very unlikely),
+	// allow the request through. This matches the behavior of Django's CSRF middleware.
+	// https://github.com/django/django/blob/8be0c0d6901669661fca578f474cd51cd284d35a/django/middleware/csrf.py#L460
+	return nil
 }
 
 func (h *CSRFHandler) checkReferer(selfOrigin *url.URL, r *http.Request) error {
