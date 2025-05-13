@@ -186,16 +186,10 @@ func TestRefererHandling(t *testing.T) {
 			expectReason: ErrBadReferer,
 		},
 		{
-			name:         "mismatched Referer passes on insecure requests",
+			name:         "mismatched Referer fails on insecure requests",
 			isTLS:        false,
 			referer:      "https://attacker.lol",
-			expectReason: nil,
-		},
-		{
-			name:         "mismatched Referer passes on insecure requests",
-			isTLS:        false,
-			referer:      "http://attacker.lol",
-			expectReason: nil,
+			expectReason: ErrBadReferer,
 		},
 		{
 			name:         "mismatched Origin fails on insecure requests",
@@ -284,6 +278,16 @@ func TestRefererHandling(t *testing.T) {
 			name:         "Sec-Fetch-Site: none does not pass",
 			isTLS:        true,
 			secFetchSite: "null",
+			expectReason: ErrNoReferer,
+		},
+		{
+			name:         "no origin headers present, secure request does not pass",
+			isTLS:        true,
+			expectReason: ErrNoReferer,
+		},
+		{
+			name:         "no origin headers present, insecure request does not pass",
+			isTLS:        false,
 			expectReason: ErrNoReferer,
 		},
 	}

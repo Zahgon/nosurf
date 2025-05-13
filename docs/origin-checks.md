@@ -29,7 +29,6 @@ sent by [all modern browsers](https://caniuse.com/mdn-http_headers_sec-fetch-sit
 If the incoming request contains a `Sec-Fetch-Site` header with the value `same-origin`,
 nosurf lets the request through (subject to further verification of the CSRF token).
 
-
 ### 2. `Origin` or `Referer` headers
 
 If the `Sec-Fetch-Site` header is not present on the incoming request, or has a value other than `same-origin`,
@@ -56,11 +55,10 @@ If the origins aren't equal, nosurf will invoke the user-supplied delegate (if a
 [`SetIsAllowedOriginFunc`](https://pkg.go.dev/github.com/justinas/nosurf#CSRFHandler.SetIsAllowedOriginFunc).
 If the delegate returns `false`, the request will be considered cross-origin and get aborted.
 
-In the unlikely case where `Origin` header does not exist, *and* the request is considered an HTTPS request,
+In the unlikely case where `Origin` header does not exist,
 nosurf will perform the same validations documented above on the `Referer` header.
 
-In the very unlikely case that no `Referer` header is present either, *and* the request is not considered an HTTPS request,
-the origin check will be considered passed.
+In the very unlikely case that no `Referer` header is present either, the request will be aborted.
 
 ## What do I need to do after upgrading to 1.2.0?
 

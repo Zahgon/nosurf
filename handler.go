@@ -208,17 +208,10 @@ func (h *CSRFHandler) ensureSameOrigin(r *http.Request) error {
 		return err
 	}
 
-	// If Origin header was not present, fall back on Referer check for secure requests.
-	if isTLS {
-		if err := h.checkReferer(selfOrigin, r); err != nil {
-			return err
-		}
-	}
-
-	// If neither of the 3 headers were available (very unlikely),
-	// allow the request through. This matches the behavior of Django's CSRF middleware.
+	// If Origin header was not present, fall back on Referer check for both secure and insecure requests.
+	// This is opposite of Django's behavior, but should be fine, as neither of the three headers existing is an edge case.
 	// https://github.com/django/django/blob/8be0c0d6901669661fca578f474cd51cd284d35a/django/middleware/csrf.py#L460
-	return nil
+	return h.checkReferer(selfOrigin, r)
 }
 
 func (h *CSRFHandler) checkReferer(selfOrigin *url.URL, r *http.Request) error {
