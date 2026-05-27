@@ -1,3 +1,4 @@
+//go:build go1.7
 // +build go1.7
 
 package nosurf
@@ -26,38 +27,16 @@ type csrfContext struct {
 // CSRFHandler finishes
 // (that is, in another handler that wraps it,
 // or after the request has been served)
-func Token(req *http.Request) string {
-	ctx, ok := req.Context().Value(nosurfKey).(*csrfContext)
-	if !ok {
-		return ""
-	}
-
-	return ctx.token
-}
+func Token(req *http.Request) string { _ = "STUB: not implemented"; return "" }
 
 // Reason takes an HTTP request and returns
 // the reason of failure of the CSRF check for that request
 //
 // Note that the same availability restrictions apply for Reason() as for Token().
-func Reason(req *http.Request) error {
-	ctx := req.Context().Value(nosurfKey).(*csrfContext)
+func Reason(req *http.Request) error { _ = "STUB: not implemented"; return nil }
 
-	return ctx.reason
-}
+func ctxClear(_ *http.Request) { _ = "STUB: not implemented"; return }
 
-func ctxClear(_ *http.Request) {
-}
+func ctxSetToken(req *http.Request, token []byte) { _ = "STUB: not implemented"; return }
 
-func ctxSetToken(req *http.Request, token []byte) {
-	ctx := req.Context().Value(nosurfKey).(*csrfContext)
-	ctx.token = b64encode(maskToken(token))
-}
-
-func ctxSetReason(req *http.Request, reason error) {
-	ctx := req.Context().Value(nosurfKey).(*csrfContext)
-	if ctx.token == "" {
-		panic("Reason should never be set when there's no token in the context yet.")
-	}
-
-	ctx.reason = reason
-}
+func ctxSetReason(req *http.Request, reason error) { _ = "STUB: not implemented"; return }

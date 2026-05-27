@@ -1,3 +1,4 @@
+//go:build !go1.7
 // +build !go1.7
 
 package nosurf
@@ -32,70 +33,24 @@ var (
 // CSRFHandler finishes
 // (that is, in another handler that wraps it,
 // or after the request has been served)
-func Token(req *http.Request) string {
-	cmMutex.RLock()
-	defer cmMutex.RUnlock()
-
-	ctx, ok := contextMap[req]
-
-	if !ok {
-		return ""
-	}
-
-	return ctx.token
-}
+func Token(req *http.Request) string { _ = "STUB: not implemented"; return "" }
 
 // Reason() takes an HTTP request and returns
 // the reason of failure of the CSRF check for that request
 //
 // Note that the same availability restrictions apply for Reason() as for Token().
-func Reason(req *http.Request) error {
-	cmMutex.RLock()
-	defer cmMutex.RUnlock()
-
-	ctx, ok := contextMap[req]
-
-	if !ok {
-		return nil
-	}
-
-	return ctx.reason
-}
+func Reason(req *http.Request) error { _ = "STUB: not implemented"; return nil }
 
 // Takes a raw token, masks it with a per-request key,
 // encodes in base64 and makes it available to the wrapped handler
 func ctxSetToken(req *http.Request, token []byte) *http.Request {
-	cmMutex.Lock()
-	defer cmMutex.Unlock()
-
-	ctx, ok := contextMap[req]
-	if !ok {
-		ctx = new(csrfContext)
-		contextMap[req] = ctx
-	}
-
-	ctx.token = b64encode(maskToken(token))
-
-	return req
+	_ = "STUB: not implemented"
+	return nil
 }
 
 func ctxSetReason(req *http.Request, reason error) *http.Request {
-	cmMutex.Lock()
-	defer cmMutex.Unlock()
-
-	ctx, ok := contextMap[req]
-	if !ok {
-		panic("Reason should never be set when there's no token" +
-			" (context) yet.")
-	}
-
-	ctx.reason = reason
-	return req
+	_ = "STUB: not implemented"
+	return nil
 }
 
-func ctxClear(req *http.Request) {
-	cmMutex.Lock()
-	defer cmMutex.Unlock()
-
-	delete(contextMap, req)
-}
+func ctxClear(req *http.Request) { _ = "STUB: not implemented"; return }

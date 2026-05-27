@@ -1,55 +1,26 @@
 package nosurf
 
 import (
-	"fmt"
 	"net/http"
-	pathModule "path"
-	"regexp"
 )
 
 // Checks if the given request is exempt from CSRF checks.
 // It checks the ExemptFunc first, then the exact paths,
 // then the globs and finally the regexps.
-func (h *CSRFHandler) IsExempt(r *http.Request) bool {
-	if h.exemptFunc != nil && h.exemptFunc(r) {
-		return true
-	}
+func (h *CSRFHandler) IsExempt(r *http.Request) bool { _ = "STUB: not implemented"; return false }
 
-	path := r.URL.Path
-	if sContains(h.exemptPaths, path) {
-		return true
-	}
+// then the globs
 
-	// then the globs
-	for _, glob := range h.exemptGlobs {
-		matched, err := pathModule.Match(glob, path)
-		if matched && err == nil {
-			return true
-		}
-	}
-
-	// finally, the regexps
-	for _, re := range h.exemptRegexps {
-		if re.MatchString(path) {
-			return true
-		}
-	}
-
-	return false
-}
+// finally, the regexps
 
 // Exempts an exact path from CSRF checks
 // With this (and other Exempt* methods)
 // you should take note that Go's paths
 // include a leading slash.
-func (h *CSRFHandler) ExemptPath(path string) {
-	h.exemptPaths = append(h.exemptPaths, path)
-}
+func (h *CSRFHandler) ExemptPath(path string) { _ = "STUB: not implemented"; return }
 
 // A variadic argument version of ExemptPath()
-func (h *CSRFHandler) ExemptPaths(paths ...string) {
-	h.exemptPaths = append(h.exemptPaths, paths...)
-}
+func (h *CSRFHandler) ExemptPaths(paths ...string) { _ = "STUB: not implemented"; return }
 
 // Exempts URLs that match the specified glob pattern
 // (as used by filepath.Match()) from CSRF checks
@@ -61,43 +32,19 @@ func (h *CSRFHandler) ExemptPaths(paths ...string) {
 // If we find a way to check the syntax, ExemptGlob
 // MIGHT PANIC on a syntax error in the future.
 // ALWAYS check your globs for syntax errors.
-func (h *CSRFHandler) ExemptGlob(pattern string) {
-	h.exemptGlobs = append(h.exemptGlobs, pattern)
-}
+func (h *CSRFHandler) ExemptGlob(pattern string) { _ = "STUB: not implemented"; return }
 
 // A variadic argument version of ExemptGlob()
-func (h *CSRFHandler) ExemptGlobs(patterns ...string) {
-	h.exemptGlobs = append(h.exemptGlobs, patterns...)
-}
+func (h *CSRFHandler) ExemptGlobs(patterns ...string) { _ = "STUB: not implemented"; return }
 
 // Accepts a regular expression string or a compiled *regexp.Regexp
 // and exempts URLs that match it from CSRF checks.
 //
 // If the given argument is neither of the accepted values,
 // or the given string fails to compile, ExemptRegexp() panics.
-func (h *CSRFHandler) ExemptRegexp(re interface{}) {
-	var compiled *regexp.Regexp
-
-	switch re := re.(type) {
-	case string:
-		compiled = regexp.MustCompile(re)
-	case *regexp.Regexp:
-		compiled = re
-	default:
-		err := fmt.Errorf("%T is not a valid type for ExemptRegexp()", re)
-		panic(err)
-	}
-
-	h.exemptRegexps = append(h.exemptRegexps, compiled)
-}
+func (h *CSRFHandler) ExemptRegexp(re interface{}) { _ = "STUB: not implemented"; return }
 
 // A variadic argument version of ExemptRegexp()
-func (h *CSRFHandler) ExemptRegexps(res ...interface{}) {
-	for _, v := range res {
-		h.ExemptRegexp(v)
-	}
-}
+func (h *CSRFHandler) ExemptRegexps(res ...interface{}) { _ = "STUB: not implemented"; return }
 
-func (h *CSRFHandler) ExemptFunc(fn func(r *http.Request) bool) {
-	h.exemptFunc = fn
-}
+func (h *CSRFHandler) ExemptFunc(fn func(r *http.Request) bool) { _ = "STUB: not implemented"; return }
